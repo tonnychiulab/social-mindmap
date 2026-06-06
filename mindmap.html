@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>社群足跡心智圖 2025–2026</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0f1117;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+  }
+  #header {
+    position: fixed; top: 0; left: 0; right: 0;
+    background: rgba(15,17,23,0.92);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    padding: 12px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    z-index: 100;
+    backdrop-filter: blur(10px);
+  }
+  #header h1 { font-size: 15px; font-weight: 500; color: #c8d3e0; letter-spacing: 0.03em; }
+  #header .sub { font-size: 12px; color: #6a7a8a; margin-top: 2px; }
+  #controls {
+    display: flex; gap: 8px;
+  }
+  .ctrl-btn {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #aab;
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .ctrl-btn:hover { background: rgba(255,255,255,0.12); color: #e0e8f0; }
+
+  #legend {
+    position: fixed; bottom: 16px; left: 16px;
+    background: rgba(15,17,23,0.88);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 11px;
+    z-index: 100;
+    backdrop-filter: blur(10px);
+  }
+  #legend .lg-title { color: #6a7a8a; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .lg-item { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; color: #9aabb8; }
+  .lg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  #tooltip {
+    position: fixed;
+    background: rgba(20,24,32,0.96);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 12px;
+    max-width: 260px;
+    pointer-events: none;
+    z-index: 200;
+    display: none;
+    line-height: 1.6;
+    color: #c8d0dc;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  }
+  #tooltip .tt-title { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+
+  svg { display: block; }
+  .node circle {
+    cursor: pointer;
+    transition: r 0.2s, filter 0.2s;
+  }
+  .node:hover circle {
+    filter: brightness(1.3);
+  }
+  .node text {
+    pointer-events: none;
+    user-select: none;
+  }
+  .link {
+    fill: none;
+    stroke-width: 1.5;
+  }
+  .tag-chip {
+    display: inline-block;
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin: 2px 2px 2px 0;
+    font-size: 11px;
+    color: #a0b0c0;
+  }
+</style>
+</head>
+<body>
+<div id="header">
+  <div>
+    <h1>📊 社群足跡心智圖</h1>
+    <div class="sub">2025年6月 – 2026年6月 · 去識別化資料 · 點擊節點展開詳情</div>
+  </div>
+  <div id="controls">
+    <button class="ctrl-btn" onclick="resetZoom()">⊙ 重置</button>
+    <button class="ctrl-btn" onclick="expandAll()">＋ 全展</button>
+    <button class="ctrl-btn" onclick="collapseAll()">－ 收合</button>
+  </div>
+</div>
+
+<div id="legend">
+  <div class="lg-title">分支主題</div>
+  <div class="lg-item"><div class="lg-dot" style="background:#4a9eff"></div>活動統計</div>
+  <div class="lg-item"><div class="lg-dot" style="background:#ff6b6b"></div>主題詞彙</div>
+  <div class="lg-item"><div class="lg-dot" style="background:#ffd93d"></div>媒體檔案</div>
+  <div class="lg-item"><div class="lg-dot" style="background:#6bcb77"></div>發文時間軸</div>
+  <div class="lg-item"><div class="lg-dot" style="background:#c77dff"></div>打卡地點</div>
+  <div class="lg-item"><div class="lg-dot" style="background:#ff9f43"></div>數位記錄</div>
+</div>
+
+<div id="tooltip"></div>
+<svg id="svg"></svg>
+
+<script>
+// ─── 資料定義 ────────────────────────────────────────────────────────────────
+const DATA = {
+  name: "社群足跡\n2025–2026",
+  type: "root",
+  info: "涵蓋 2025年6月 至 2026年6月\n去識別化個人社群行為分析",
+  children: [
+    {
+      name: "活動統計",
+      type: "branch",
+      color: "#4a9eff",
+      icon: "📈",
+      info: "貼文總量與類型分佈\n共計 1,059 篇貼文",
+      children: [
+        { name: "1,059 篇貼文", type: "stat", color: "#4a9eff",
+          info: "分享連結：711 篇\n相片貼文：253 篇\n一般貼文：79 篇\n影片貼文：16 篇" },
+        { name: "最活躍時段", type: "stat", color: "#4a9eff",
+          info: "午後 1–2 點（日間高峰）\n傍晚 6 點起第二波\n晚間 9 點（夜間高峰）\n深夜發文極少" },
+        { name: "高峰月：2025-08", type: "stat", color: "#4a9eff",
+          info: "8月：118 篇（年度最高）\n11月：98 篇\n12月：94 篇\n7月：79 篇" },
+        { name: "年度活躍度", type: "stat", color: "#4a9eff",
+          info: "2025年：553 篇\n2026年（至6月）：160 篇\n月均約 60 篇\n最低月：2026-04（19 篇）" },
+        { name: "月份趨勢圖", type: "chart", color: "#4a9eff",
+          chartType: "bar",
+          chartData: [37,79,118,73,54,98,94,66,20,32,19,22,1],
+          chartLabels: ["25/6","25/7","25/8","25/9","25/10","25/11","25/12","26/1","26/2","26/3","26/4","26/5","26/6"],
+          info: "每月發文數量分佈\n點擊查看完整趨勢" }
+      ]
+    },
+    {
+      name: "主題詞彙",
+      type: "branch",
+      color: "#ff6b6b",
+      icon: "💬",
+      info: "從 305 篇有文字的貼文中\n提取的高頻詞彙",
+      children: [
+        { name: "AI 科技", type: "keyword", color: "#ff6b6b",
+          info: "高頻詞：\nGemini（37次）、上下文（26次）\n模型（30次）、工程（21次）\n系統（19次）、資料（19次）\n\n→ 主要關注 AI 技術動態" },
+        { name: "資安宣導", type: "keyword", color: "#ff6b6b",
+          info: "高頻詞：\n台灣（49次）、宣導（27次）\n查證（27次）、反詐（18次）\n提醒（19次）、男性（28次）\n\n→ 積極推廣反詐騙意識" },
+        { name: "攝影視覺", type: "keyword", color: "#ff6b6b",
+          info: "高頻詞：\n鏡頭（37次）、畫面（21次）\n風格（23次）\n\n→ 對攝影有明顯興趣" },
+        { name: "生活日常", type: "keyword", color: "#ff6b6b",
+          info: "高頻詞：\n台灣（49次）、朋友（21次）\n平安（19次）\n\n→ 本土意識強烈\n關注人際與生活品質" },
+        { name: "內容側寫", type: "leaf", color: "#ff8080",
+          info: "綜合分析：\n① 科技思考者：頻繁討論 AI 工具\n② 公民倡導者：反詐騙宣導顯著\n③ 視覺記錄者：攝影相關詞高頻\n④ 在地關懷者：台灣為最高頻詞" }
+      ]
+    },
+    {
+      name: "媒體檔案",
+      type: "branch",
+      color: "#ffd93d",
+      icon: "📷",
+      info: "個人媒體資產統計\n存儲於資料匯出包中",
+      children: [
+        { name: "738 張照片", type: "stat", color: "#ffd93d",
+          info: "格式：JPEG\n儲存路徑：posts/media/\n包含多個相簿分類\n涵蓋日常、旅遊、活動等" },
+        { name: "57 支影片", type: "stat", color: "#ffd93d",
+          info: "格式：MP4\n記錄生活片段、活動影像\n含自拍及轉分享影片" },
+        { name: "5 個相簿", type: "stat", color: "#ffd93d",
+          info: "相簿主題：\n・AI 科技分享\n・反詐騙宣導\n・程式碼檢測\n・手機上傳\n・一般相片" },
+        { name: "媒體佔比", type: "chart", color: "#ffd93d",
+          chartType: "pie",
+          chartData: [711, 253, 79, 16],
+          chartLabels: ["分享連結","相片貼文","一般文字","影片貼文"],
+          info: "貼文類型佔比分佈\n分享連結為主體（67%）\n相片貼文次之（24%）" }
+      ]
+    },
+    {
+      name: "發文時間軸",
+      type: "branch",
+      color: "#6bcb77",
+      icon: "📅",
+      info: "時間分佈深度分析\n含日內時段與年度趨勢",
+      children: [
+        { name: "午間高峰 12–14h", type: "time", color: "#6bcb77",
+          info: "12點：47 篇\n13點：66 篇（日間最高峰）\n14點：56 篇\n\n→ 午休時段最為活躍\n符合台灣工作日習慣" },
+        { name: "夜間活躍 18–21h", type: "time", color: "#6bcb77",
+          info: "18點：48 篇\n21點：53 篇\n\n→ 下班後第二波活躍期\n晚餐後到就寢前的使用習慣" },
+        { name: "深夜罕見 0–5h", type: "time", color: "#6bcb77",
+          info: "凌晨至清晨共僅 17 篇\n\n→ 作息規律\n無熬夜發文習慣" },
+        { name: "季節波動", type: "time", color: "#6bcb77",
+          info: "夏季高峰（2025年8月）：118篇\n秋冬持續活躍（11-12月）：192篇\n年後明顯下降（2026年2月）：20篇\n春季回升幅度有限" },
+        { name: "時段分佈圖", type: "chart", color: "#6bcb77",
+          chartType: "ring",
+          chartData: [17, 141, 288, 267],
+          chartLabels: ["深夜(0-5)","早晨(6-11)","午後(12-17)","傍晚(18-23)"],
+          info: "24小時使用時段分佈\n午後佔 40%，傍晚佔 37%" }
+      ]
+    },
+    {
+      name: "打卡地點",
+      type: "branch",
+      color: "#c77dff",
+      icon: "📍",
+      info: "524 筆打卡紀錄\n反映實體活動範圍",
+      children: [
+        { name: "廟宇信仰", type: "place", color: "#c77dff",
+          info: "最常打卡地點（廟宇類）：\n北港武德宮（8次）\n新北市永和保福宮（6次）\n白沙屯拱天宮（6次）\n員山鄉北后寺（4次）\n圓通禪寺（4次）\n行修宮（4次）\n烘爐地南山福德宮（4次）\n\n→ 台灣廟宇文化深度參與者" },
+        { name: "自然登山", type: "place", color: "#c77dff",
+          info: "戶外活動熱點：\n烏來哈盆越嶺古道（16次）\n烏來老街（4次）\n土城大尖二尖登山步道（4次）\n\n→ 登山健行愛好者\n烏來為最愛據點" },
+        { name: "餐廳美食", type: "place", color: "#c77dff",
+          info: "常去餐廳：\nPIZZA Ora 歐拉手工窯烤披薩（8次）\n陶板屋永和中正店（4次）\n燒味鮮無菜單餐廳（4次）\n饗讚健康珍鍋（4次）\n\n→ 喜愛品嚐多元料理" },
+        { name: "活動足跡", type: "place", color: "#c77dff",
+          info: "遠程打卡：\n澎湖（離島旅遊）\n高鐵彰化站（中南部活動）\n蘭陽動植物王國（宜蘭）\n八里療養院（北部）\n\n→ 活動範圍涵蓋台灣多縣市" }
+      ]
+    },
+    {
+      name: "數位記錄",
+      type: "branch",
+      color: "#ff9f43",
+      icon: "📖",
+      info: "綜合所有分析的\n個人數位足跡摘要",
+      children: [
+        { name: "內容創作者輪廓", type: "summary", color: "#ff9f43",
+          info: "・年發文 700+ 篇的高活躍用戶\n・以分享連結為主要互動方式\n・具備原創文字撰寫能力（305篇）\n・AI 科技是核心創作主題" },
+        { name: "社會參與面向", type: "summary", color: "#ff9f43",
+          info: "・積極宣導反詐騙意識\n・關注台灣社會議題\n・廟宇文化的實踐者\n・社區與宗教活動參與度高" },
+        { name: "生活型態分析", type: "summary", color: "#ff9f43",
+          info: "・作息規律（午間、傍晚活躍）\n・喜愛戶外登山活動\n・攝影記錄生活習慣明顯\n・美食探索是休閒重心之一" },
+        { name: "數位行為特徵", type: "summary", color: "#ff9f43",
+          info: "・以Android設備為主要發文工具\n・內容涵蓋本地與全球視角\n・季節性活躍度波動（夏天最高）\n・2026年初活躍度有所下降" },
+        { name: "資料覆蓋範圍", type: "summary", color: "#ff9f43",
+          info: "資料期間：2025-06 至 2026-06\n總貼文：1,059 篇\n媒體資產：738 張照片 + 57 影片\n打卡紀錄：524 筆\n本報告已完整去識別化處理" }
+      ]
+    }
+  ]
+};
+
+// ─── 尺寸與 SVG 初始化 ──────────────────────────────────────────────────────
+const W = window.innerWidth, H = window.innerHeight;
+const svg = d3.select('#svg')
+  .attr('width', W).attr('height', H);
+
+const g = svg.append('g')
+  .attr('transform', `translate(${W/2},${H/2})`);
+
+const zoom = d3.zoom()
+  .scaleExtent([0.2, 3])
+  .on('zoom', e => g.attr('transform', e.transform.translate(W/2, H/2)));
+svg.call(zoom);
+
+// ─── 顏色與佈局 ─────────────────────────────────────────────────────────────
+const BRANCH_COLORS = ['#4a9eff','#ff6b6b','#ffd93d','#6bcb77','#c77dff','#ff9f43'];
+const ROOT_COLOR = '#a0b8d0';
+
+// 計算節點半徑
+function nodeR(d) {
+  if (d.data.type === 'root') return 42;
+  if (d.data.type === 'branch') return 28;
+  if (['stat','time','place','keyword','summary','chart'].includes(d.data.type)) return 20;
+  return 14;
+}
+
+// 取得顏色
+function nodeColor(d) {
+  if (d.data.type === 'root') return ROOT_COLOR;
+  return d.data.color || '#888';
+}
+
+// ─── 建立層次結構 ───────────────────────────────────────────────────────────
+const root = d3.hierarchy(DATA);
+root.x0 = 0; root.y0 = 0;
+
+// 初始只展開一層
+root.children.forEach(collapse);
+function collapse(d) {
+  if (d.children) {
+    d._children = d.children;
+    d._children.forEach(collapse);
+    d.children = null;
+  }
+}
+
+// ─── 徑向佈局 ───────────────────────────────────────────────────────────────
+const treeLayout = d3.tree()
+  .size([2 * Math.PI, 320])
+  .separation((a, b) => (a.parent === b.parent ? 1.2 : 2.2) / a.depth);
+
+let linkSel, nodeSel;
+
+function radialPoint(x, y) {
+  return [(y = +y) * Math.cos(x -= Math.PI / 2), y * Math.sin(x)];
+}
+
+// ─── 更新函數 ───────────────────────────────────────────────────────────────
+function update(source) {
+  const treeData = treeLayout(root);
+  const nodes = treeData.descendants();
+  const links = treeData.links();
+
+  // 調整半徑距離
+  nodes.forEach(d => {
+    if (d.depth === 0) d.y = 0;
+    else if (d.depth === 1) d.y = 140;
+    else if (d.depth === 2) d.y = 260;
+    else d.y = 360;
+  });
+
+  // ── 連結 ──
+  const link = g.selectAll('.link').data(links, d => d.target.data.name);
+  const linkEnter = link.enter().append('path').attr('class', 'link');
+  const linkUpdate = linkEnter.merge(link);
+
+  linkUpdate.transition().duration(400)
+    .attr('d', d3.linkRadial().angle(d => d.x).radius(d => d.y))
+    .attr('stroke', d => d.target.data.color || '#4a4a5a')
+    .attr('stroke-opacity', 0.35);
+
+  link.exit().remove();
+
+  // ── 節點 ──
+  const node = g.selectAll('.node').data(nodes, d => d.data.name);
+  const nodeEnter = node.enter().append('g')
+    .attr('class', 'node')
+    .attr('transform', d => `translate(${radialPoint(source.x || 0, source.y || 0)})`)
+    .on('click', clicked)
+    .on('mouseover', showTooltip)
+    .on('mouseout', hideTooltip);
+
+  nodeEnter.append('circle')
+    .attr('r', 0)
+    .attr('fill', d => nodeColor(d))
+    .attr('fill-opacity', d => d.data.type === 'root' ? 0.25 : 0.18)
+    .attr('stroke', d => nodeColor(d))
+    .attr('stroke-width', d => d.data.type === 'root' ? 2.5 : 1.8)
+    .attr('stroke-opacity', 0.8);
+
+  nodeEnter.append('text')
+    .attr('dy', '0.31em')
+    .style('font-size', d => d.data.type === 'root' ? '12px' : d.data.type === 'branch' ? '11px' : '10px')
+    .style('fill', d => nodeColor(d))
+    .style('font-weight', d => ['root','branch'].includes(d.data.type) ? '600' : '400')
+    .style('text-anchor', 'middle');
+
+  const nodeUpdate = nodeEnter.merge(node);
+
+  nodeUpdate.transition().duration(400)
+    .attr('transform', d => `translate(${radialPoint(d.x, d.y)})`);
+
+  nodeUpdate.select('circle').transition().duration(400)
+    .attr('r', d => nodeR(d));
+
+  nodeUpdate.select('text')
+    .text(d => {
+      const n = d.data.name;
+      if (d.data.type === 'root') return n;
+      return n.length > 8 ? n.slice(0,8)+'…' : n;
+    })
+    .attr('x', d => {
+      if (d.depth === 0) return 0;
+      const [px] = radialPoint(d.x, d.y);
+      return px > 0 ? nodeR(d) + 5 : -nodeR(d) - 5;
+    })
+    .attr('text-anchor', d => {
+      if (d.depth === 0) return 'middle';
+      const [px] = radialPoint(d.x, d.y);
+      return px > 0 ? 'start' : 'end';
+    })
+    .attr('dy', '0.35em');
+
+  // ── 有子節點時顯示折疊指示 ──
+  nodeUpdate.select('.collapse-indicator').remove();
+  nodeUpdate.filter(d => d._children)
+    .append('text')
+    .attr('class','collapse-indicator')
+    .text('+')
+    .style('font-size','13px')
+    .style('fill', d => nodeColor(d))
+    .style('font-weight','700')
+    .attr('dy','0.35em')
+    .style('pointer-events','none');
+
+  node.exit().transition().duration(300)
+    .attr('transform', d => `translate(${radialPoint(source.x, source.y)})`)
+    .remove();
+}
+
+// ─── 互動 ───────────────────────────────────────────────────────────────────
+function clicked(event, d) {
+  if (d.children) {
+    d._children = d.children;
+    d.children = null;
+  } else {
+    d.children = d._children;
+    d._children = null;
+  }
+  update(d);
+}
+
+function expandAll() {
+  root.descendants().forEach(d => {
+    if (d._children) { d.children = d._children; d._children = null; }
+  });
+  update(root);
+}
+
+function collapseAll() {
+  root.children && root.children.forEach(collapse);
+  update(root);
+}
+
+function resetZoom() {
+  svg.transition().duration(400)
+    .call(zoom.transform, d3.zoomIdentity);
+}
+
+// ─── Tooltip ────────────────────────────────────────────────────────────────
+const tt = document.getElementById('tooltip');
+
+function showTooltip(event, d) {
+  if (!d.data.info && !d.data.chartType) return;
+  let html = `<div class="tt-title">${d.data.icon || ''} ${d.data.name}</div>`;
+
+  if (d.data.chartType === 'bar' && d.data.chartData) {
+    const max = Math.max(...d.data.chartData);
+    html += `<div style="margin-top:8px">`;
+    d.data.chartLabels.forEach((lb, i) => {
+      const pct = (d.data.chartData[i] / max * 100).toFixed(0);
+      const color = d.data.color || '#4a9eff';
+      html += `<div style="display:flex;align-items:center;gap:6px;margin:3px 0">
+        <span style="width:48px;font-size:10px;color:#7a8a9a;flex-shrink:0">${lb}</span>
+        <div style="flex:1;height:8px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${color};opacity:0.75;border-radius:4px"></div>
+        </div>
+        <span style="font-size:10px;color:#9aabb8;width:28px;text-align:right">${d.data.chartData[i]}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  } else if (d.data.chartType === 'pie' || d.data.chartType === 'ring') {
+    const total = d.data.chartData.reduce((a,b)=>a+b,0);
+    const colors = ['#4a9eff','#ffd93d','#6bcb77','#ff6b6b','#c77dff'];
+    html += `<div style="margin-top:8px">`;
+    d.data.chartLabels.forEach((lb, i) => {
+      const pct = (d.data.chartData[i]/total*100).toFixed(1);
+      html += `<div style="display:flex;align-items:center;gap:6px;margin:3px 0">
+        <div style="width:8px;height:8px;border-radius:50%;background:${colors[i]};flex-shrink:0"></div>
+        <span style="font-size:11px;color:#c8d0dc;flex:1">${lb}</span>
+        <span style="font-size:11px;color:#9aabb8">${pct}%</span>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  if (d.data.info) {
+    html += `<div style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.07);padding-top:8px;white-space:pre-wrap;font-size:11px;color:#9aabb8">${d.data.info}</div>`;
+  }
+
+  tt.innerHTML = html;
+  tt.style.display = 'block';
+  positionTooltip(event);
+}
+
+function positionTooltip(event) {
+  const x = event.clientX + 14, y = event.clientY - 10;
+  const tw = 280, th = tt.offsetHeight;
+  tt.style.left = (x + tw > window.innerWidth ? x - tw - 28 : x) + 'px';
+  tt.style.top  = (y + th > window.innerHeight ? y - th : y) + 'px';
+}
+
+function hideTooltip() {
+  tt.style.display = 'none';
+}
+
+svg.on('mousemove', e => {
+  if (tt.style.display !== 'none') positionTooltip(e);
+});
+
+// ─── 初始渲染 ────────────────────────────────────────────────────────────────
+update(root);
+
+// 稍後展開一層
+setTimeout(() => {
+  root.children && root.children.forEach(d => {
+    // 保持只展一層
+  });
+}, 300);
+
+window.addEventListener('resize', () => {
+  const nw = window.innerWidth, nh = window.innerHeight;
+  svg.attr('width', nw).attr('height', nh);
+});
+</script>
+</body>
+</html>
